@@ -70,3 +70,7 @@ GRANT SELECT ON [employee] TO RemoteLogger;
 
 SELECT COUNT(*) FROM employee;
 select * from employee
+
+
+---it is possible to create between on-prem and azure db
+--https://www.youtube.com/watch?v=b8NuP5UN7mA 
