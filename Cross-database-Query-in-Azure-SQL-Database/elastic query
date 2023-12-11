@@ -1,0 +1,72 @@
+-- Cross-database Query in Azure SQL Database
+
+--Step 1- use or create new databases
+CREATE DATABASE OriginDB(EDITION='Standard', Service_Objective='S0');
+CREATE DATABASE RemoteDB(EDITION='Standard', Service_Objective='S0');
+
+--step 2 - Create a SQL Login in the logical server's master database (Use MASTER database) for the RemoteLogger 
+CREATE LOGIN RemoteLogger WITH PASSWORD='212121'; -- add a stronger password!
+
+--Step 3: Create a User in the RemoteDB (Use RemoteDB)
+CREATE USER RemoteLogger FOR LOGIN RemoteLogger;
+
+--Step 4: Create a Master Key in the OriginDB (Use OriginDB)
+CREATE MASTER KEY ENCRYPTION BY PASSWORD='Credentials123!' -- use a stronger password here!
+
+--step 5: Create a Database Scoped Credential in the OriginDB
+CREATE DATABASE SCOPED CREDENTIAL AzElaticQuery WITH IDENTITY = 'RemoteLogger', SECRET='passw0rd#1234'; --strong password here!
+ --drop DATABASE SCOPED CREDENTIAL AppCredential
+
+--Step 6: Creating the external data source OriginDBB (it is like a linked server) - it will create link with an external or a remote database
+ CREATE EXTERNAL DATA SOURCE RemoteDatabase
+WITH
+(
+TYPE=RDBMS,
+LOCATION='gkodemosql01.database.windows.net', -- Change the servername for your server name.
+DATABASE_NAME='RemoteDB',
+CREDENTIAL= AzElaticQuery
+);
+
+--step 7 create table /or use existing table on both, add data
+--on RemoteDB
+
+CREATE TABLE employee
+(
+ID INT IDENTITY PRIMARY KEY,
+NAME VARCHAR(20) NOT NULL,
+LASTNAME VARCHAR(30) NOT NULL,
+CEL VARCHAR(12) NOT NULL,
+EMAIL VARCHAR(60) NOT NULL,
+USERID INT
+);
+--drop table employee
+INSERT INTO employee (Name, LastName, Cel, Email, UserId) VALUES
+('Blaire', 'Pascal', '91551234567', 'bpasc@contoso.com', 3),
+('Jim', 'Johns', '95551234568', 'jimjohns@contoso.com', 2),
+('Maria', 'Gomzalez', '95551234569', 'gomzm@contoso.net',1),
+('Alicia', 'Corbey', '88888888', 'keysaclicia@email.com', 5);
+
+ 
+--step 8 Create the external table in the OriginDB
+--  This is a mapping table in OriginDB that references the fields in RemoteDB for table employee
+CREATE EXTERNAL TABLE employee
+(
+ID INT,
+NAME VARCHAR(20) NOT NULL,
+LASTNAME VARCHAR(30) NOT NULL,
+CEL VARCHAR(12) NOT NULL,
+EMAIL VARCHAR(60) NOT NULL,
+USERID INT
+)
+WITH
+(
+DATA_SOURCE = RemoteDatabase
+);
+
+--step 9 Granting the RemoteDB user necessary permissions such as select on employee table (Use RemoteDB)
+GRANT SELECT ON [employee] TO RemoteLogger;
+
+-- Step 10: Querying the remote table from OriginDB (use OriginDB)
+
+SELECT COUNT(*) FROM employee;
+select * from employee
