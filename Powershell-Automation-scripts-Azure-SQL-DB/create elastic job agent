@@ -1,1 +1,148 @@
 
+# Connect to Azure
+Connect-AzAccount
+
+# Select Subscription
+$sublist = Get-AzSubscription | Select-Object -Property Name
+$i = 1
+foreach ($sub in $sublist) {
+    Write-Host "$i. $($sub.Name)"
+    $i++
+}
+
+# Retry loop for subscription selection
+$subscriptionSuccess = $false
+while (-not $subscriptionSuccess) {
+    try {
+        $selection = Read-Host "Enter the number of the subscription you want to use"
+        $subscriptionName = $sublist[$selection - 1].Name
+        Select-AzSubscription -SubscriptionName $subscriptionName -ErrorAction Stop
+        $subscriptionSuccess = $true
+    } catch {
+        Write-Host "Error: Invalid subscription selection. Please try again." -ForegroundColor Red
+    }
+}
+
+# List all resource groups
+$resourceGroups = Get-AzResourceGroup
+$i = 1
+foreach ($rg in $resourceGroups) {
+    Write-Host "$i. $($rg.ResourceGroupName)"
+    $i++
+}
+
+# Retry loop for resource group selection
+$resourceGroupSuccess = $false
+while (-not $resourceGroupSuccess) {
+    try {
+        $rgSelection = Read-Host "Enter the number of the resource group you want to use"
+        $resourceGroupName = $resourceGroups[$rgSelection - 1].ResourceGroupName
+        $resourceGroupSuccess = $true
+    } catch {
+        Write-Host "Error: Invalid resource group selection. Please try again." -ForegroundColor Red
+    }
+}
+
+# List all SQL Servers in the selected resource group
+$sqlServers = Get-AzSqlServer -ResourceGroupName $resourceGroupName
+$i = 1
+foreach ($sqlServer in $sqlServers) {
+    Write-Host "$i. $($sqlServer.ServerName) (Resource Group: $($sqlServer.ResourceGroupName))"
+    $i++
+}
+
+# Retry loop for SQL Server selection
+$serverSuccess = $false
+while (-not $serverSuccess) {
+    try {
+        $serverSelection = Read-Host "Enter the number of the SQL server you want to use"
+        $serverName = $sqlServers[$serverSelection - 1].ServerName
+        $serverSuccess = $true
+    } catch {
+        Write-Host "Error: Invalid SQL Server selection. Please try again." -ForegroundColor Red
+    }
+}
+
+# Filter databases with S1 or higher service tier
+$eligibleDatabases = Get-AzSqlDatabase -ServerName $serverName -ResourceGroupName $resourceGroupName | 
+                     Where-Object { $_.RequestedServiceObjectiveName -in @('S1', 'S2', 'S3', 'P1', 'P2', 'P3', 'P4', 'P6', 'P11') }
+
+# Check if there are any eligible databases
+if ($eligibleDatabases.Count -eq 0) {
+    Write-Host "No eligible databases (S1 or higher) found on server '$serverName'."
+
+    # Ask if the user wants to create a new database
+    $createNewDb = Read-Host "Do you want to create a new database? (yes/no)"
+    if ($createNewDb -eq "yes") {
+        # Get details for the new database
+        $newDbName = Read-Host "Enter the name for the new database"
+        $newDbTier = Read-Host "Enter the service tier for the new database (e.g., S1, S2, P1)"
+        $dbMaxSize = Read-Host "Enter the maximum size for the database in GB (e.g., 5)"
+
+        # Create new database
+        try {
+            Write-Host "Creating new database '$newDbName' with tier '$newDbTier'..."
+            New-AzSqlDatabase -ResourceGroupName $resourceGroupName -ServerName $serverName -DatabaseName $newDbName -RequestedServiceObjectiveName $newDbTier -MaxSizeGB $dbMaxSize -ErrorAction Stop
+            Write-Host "Database '$newDbName' created successfully with tier '$newDbTier'."
+        } catch {
+            Write-Host "Error: Failed to create the new database. Please check the parameters and try again." -ForegroundColor Red
+            return
+        }
+    }
+    return  # End script after database creation
+} else {
+    # List eligible databases
+    Write-Host "Eligible databases on server '$serverName':"
+    $i = 1
+    foreach ($db in $eligibleDatabases) {
+        Write-Host "$i. $($db.DatabaseName) (Service Tier: $($db.RequestedServiceObjectiveName))"
+        $i++
+    }
+
+    # Retry loop for database selection
+    $databaseSuccess = $false
+    while (-not $databaseSuccess) {
+        try {
+            $databaseSelection = Read-Host "Enter the number of the database to use"
+            $databaseName = $eligibleDatabases[$databaseSelection - 1].DatabaseName
+            $databaseSuccess = $true
+        } catch {
+            Write-Host "Error: Invalid database selection. Please try again." -ForegroundColor Red
+        }
+    }
+}
+
+# Check if Elastic Job Agent exists
+$existingAgents = Get-AzSqlElasticJobAgent -ResourceGroupName $resourceGroupName -ServerName $serverName -ErrorAction SilentlyContinue
+if ($existingAgents) {
+    $agentName = $existingAgents[0].JobAgentName
+    Write-Host "Elastic Job Agent '$agentName' found in resource group '$resourceGroupName' and server '$serverName'."
+    
+    # Ask if user wants to create a new Elastic Job Agent
+    $createNewAgent = Read-Host "Do you want to create a new Elastic Job Agent? (yes/no)"
+    if ($createNewAgent -eq "yes") {
+        # Create a new Elastic Job Agent if requested
+        $agentName = Read-Host "Enter the name for the new Elastic Job Agent"
+        try {
+            Write-Host "Creating Elastic Job Agent '$agentName' on server '$serverName' in resource group '$resourceGroupName' using database '$databaseName'..."
+            New-AzSqlElasticJobAgent -ResourceGroupName $resourceGroupName -ServerName $serverName -AgentName $agentName -DatabaseName $databaseName -ErrorAction Stop
+            Write-Host "Elastic Job Agent '$agentName' created on server '$serverName'."
+        } catch {
+            Write-Host "Error: Failed to create Elastic Job Agent. Please check your parameters and try again." -ForegroundColor Red
+            return
+        }
+    }
+} else {
+    # Create a new Elastic Job Agent if none exists
+    $agentName = Read-Host "No Elastic Job Agent found. Enter the name for a new Elastic Job Agent"
+    try {
+        Write-Host "Creating Elastic Job Agent '$agentName' on server '$serverName' in resource group '$resourceGroupName' using database '$databaseName'..."
+        New-AzSqlElasticJobAgent -ResourceGroupName $resourceGroupName -ServerName $serverName -AgentName $agentName -DatabaseName $databaseName -ErrorAction Stop
+        Write-Host "Elastic Job Agent '$agentName' created on server '$serverName'."
+    } catch {
+        Write-Host "Error: Failed to create Elastic Job Agent. Please check your parameters and try again." -ForegroundColor Red
+        return
+    }
+}
+
+ 
