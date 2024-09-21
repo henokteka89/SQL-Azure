@@ -13,7 +13,7 @@ Get-Module -Name (Get-Item $modulepath).BaseName
 Once the module is imported, you can run create, delete or restore database options as needed.
 azdelete-db  	# To delete existing database
 azrestore-db 	# To do a point in time recovery
-azcreate-db  	# To create new database
+azcreate-db  	# To create new database  time e.g. 2024-09-21 17:46:00 (no quotations needed) UTC is 4 hours ahead of EST or 5 hrs ahead of CST? 17:00 utc = 1:00 pm est
  
 
 If you update the module, it is better to remove it first and reload (import) it again. 
