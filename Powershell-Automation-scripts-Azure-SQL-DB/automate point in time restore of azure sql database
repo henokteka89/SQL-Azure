@@ -1,0 +1,176 @@
+# Connect to Azure account
+Connect-AzAccount
+
+# List all subscriptions
+$sublist = Get-AzSubscription | Select-Object -Property Name
+$i = 1
+foreach ($sub in $sublist) {
+    Write-Host "$i. $($sub.Name)"
+    $i++
+}
+
+# Retry loop for subscription selection
+$subscriptionSuccess = $false
+while (-not $subscriptionSuccess) {
+    try {
+        $selection = Read-Host "Enter the number of the subscription you want to use"
+        $subscriptionName = $sublist[$selection - 1].Name
+        Select-AzSubscription -SubscriptionName $subscriptionName -ErrorAction Stop
+        $subscriptionSuccess = $true
+    } catch {
+        Write-Host "Error: Invalid subscription selection. Please try again." -ForegroundColor Red
+    }
+}
+
+# List all SQL Servers in the selected subscription
+$sqlServers = Get-AzSqlServer | Select-Object -Property ResourceGroupName, ServerName
+$i = 1
+foreach ($sqlServer in $sqlServers) {
+    Write-Host "$i. $($sqlServer.ServerName) (Resource Group: $($sqlServer.ResourceGroupName))"
+    $i++
+}
+
+# Retry loop for SQL Server selection
+$serverSuccess = $false
+while (-not $serverSuccess) {
+    try {
+        $selection = Read-Host "Enter the number of the SQL server you want to use"
+        $serverName = $sqlServers[$selection - 1].ServerName
+        $resourceGroupName = $sqlServers[$selection - 1].ResourceGroupName
+        $serverSuccess = $true
+    } catch {
+        Write-Host "Error: Invalid SQL Server selection. Please try again." -ForegroundColor Red
+    }
+}
+
+# List all SQL Databases on the selected server with Resource Group info
+$sqlDatabases = Get-AzSqlDatabase -ServerName $serverName -ResourceGroupName $resourceGroupName
+$i = 1
+foreach ($db in $sqlDatabases) {
+    Write-Host "$i. $($db.DatabaseName) (Resource Group: $resourceGroupName)"
+    $i++
+}
+
+# Retry loop for database selection
+$dbSuccess = $false
+while (-not $dbSuccess) {
+    try {
+        $selection = Read-Host "Enter the number of the database to restore from"
+        $sourceDbName = $sqlDatabases[$selection - 1].DatabaseName
+        $currentServiceObjective = $sqlDatabases[$selection - 1].RequestedServiceObjectiveName
+        $dbSuccess = $true
+    } catch {
+        Write-Host "Error: Invalid database selection. Please try again." -ForegroundColor Red
+    }
+}
+
+Write-Host "Current service tier for '$sourceDbName' is '$currentServiceObjective'"
+
+# Check if the service tier is Basic or S0 and prompt for upgrade
+$upgradedTier = $null
+if ($currentServiceObjective -in @('Basic', 'S0')) {
+    $upgrade = Read-Host "The database is on a low tier ('$currentServiceObjective'). Do you want to temporarily upgrade it for the restore process? (yes/no)"
+    if ($upgrade -eq "yes") {
+        $upgradedTier = Read-Host "Enter the new service tier (e.g., S1, P1, etc.)"
+        Write-Host "Upgrading the database to '$upgradedTier' for the restore process..."
+        Set-AzSqlDatabase -ResourceGroupName $resourceGroupName -ServerName $serverName -DatabaseName $sourceDbName -RequestedServiceObjectiveName $upgradedTier -ErrorAction Stop
+        Write-Host "Database upgraded to '$upgradedTier'."
+    }
+}
+
+# Retry loop for restore time input
+$timeSuccess = $false
+while (-not $timeSuccess) {
+    try {
+        $restoreTime = Read-Host "Enter the time to restore to (e.g., '2024-09-18T15:00:00Z')"
+        # Validate the input format (you can add additional validation logic)
+        if ($restoreTime -match "^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$") {
+            $timeSuccess = $true
+        } else {
+            throw "Invalid time format"
+        }
+    } catch {
+        Write-Host "Error: Invalid restore time format. Please use the format 'YYYY-MM-DDTHH:MM:SSZ'." -ForegroundColor Red
+    }
+}
+
+# Retry loop for new database name input with lowercase requirement
+$dbNameSuccess = $false
+while (-not $dbNameSuccess) {
+    try {
+        $newDbName = Read-Host "Enter the name for the restored database (must be lowercase, e.g., 'adventureworks_copy' or 'adventureworks_new')"
+        if (-not [string]::IsNullOrWhiteSpace($newDbName) -and $newDbName -cmatch "^[a-z0-9_]+$") {
+            $dbNameSuccess = $true
+        } else {
+            throw "Invalid database name"
+        }
+    } catch {
+        Write-Host "Error: Invalid database name. It must be lowercase and can only contain letters, numbers, and underscores. Please try again." -ForegroundColor Red
+    }
+}
+
+# Perform Point-in-Time Restore with detailed error output
+$restoreSuccess = $false
+while (-not $restoreSuccess) {
+    try {
+        Write-Host "Restoring database '$sourceDbName' to '$newDbName' at time '$restoreTime'"
+        $restoredDb = Restore-AzSqlDatabase `
+            -FromPointInTimeBackup `
+            -PointInTime $restoreTime `
+            -ResourceGroupName $resourceGroupName `
+            -ServerName $serverName `
+            -TargetDatabaseName $newDbName `
+            -ResourceId (Get-AzSqlDatabase -ServerName $serverName -DatabaseName $sourceDbName -ResourceGroupName $resourceGroupName).ResourceId `
+            -ErrorAction Stop
+        $restoreSuccess = $true
+        Write-Host "Database '$newDbName' restored successfully."
+    } catch {
+        Write-Host "Error: Failed to restore the database." -ForegroundColor Red
+        Write-Host "Reason: $($_.Exception.Message)" -ForegroundColor Yellow
+        Write-Host "Do you want to try again? (yes/no)"
+        $retry = Read-Host
+        if ($retry -ne "yes") {
+            break
+        }
+    }
+}
+
+# Rename original database, rename new database to original name, then drop the original one
+if ($restoreSuccess) {
+    # Rename original database before dropping
+    $oldDbName = "$sourceDbName-Old"
+    try {
+        Write-Host "Renaming the original database '$sourceDbName' to '$oldDbName'..."
+        Set-AzSqlDatabase -ResourceGroupName $resourceGroupName -ServerName $serverName -DatabaseName $sourceDbName -NewName $oldDbName -ErrorAction Stop
+        Write-Host "Original database renamed to '$oldDbName'."
+        
+        # Rename restored database to original name
+        Write-Host "Renaming the new database '$newDbName' to '$sourceDbName'..."
+        Set-AzSqlDatabase -ResourceGroupName $resourceGroupName -ServerName $serverName -DatabaseName $newDbName -NewName $sourceDbName -ErrorAction Stop
+        Write-Host "Restored database renamed to '$sourceDbName'."
+        
+        # Option to delete the old original database
+        $deleteOldDb = Read-Host "Do you want to delete the old database '$oldDbName'? (yes/no)"
+        if ($deleteOldDb -eq "yes") {
+            Write-Host "Deleting the old database '$oldDbName'..."
+            Remove-AzSqlDatabase -ResourceGroupName $resourceGroupName -ServerName $serverName -DatabaseName $oldDbName -Force -ErrorAction Stop
+            Write-Host "Old database '$oldDbName' deleted."
+        } else {
+            Write-Host "Old database '$oldDbName' was not deleted."
+        }
+
+        # Downgrade database to original tier if it was upgraded
+        if ($upgradedTier -ne $null) {
+            $downgrade = Read-Host "Do you want to downgrade the database back to its original tier '$currentServiceObjective'? (yes/no)"
+            if ($downgrade -eq "yes") {
+                Write-Host "Downgrading the database back to '$currentServiceObjective'..."
+                Set-AzSqlDatabase -ResourceGroupName $resourceGroupName -ServerName $serverName -DatabaseName $sourceDbName -RequestedServiceObjectiveName $currentServiceObjective -ErrorAction Stop
+                Write-Host "Database downgraded to '$currentServiceObjective'."
+            }
+        }
+        
+    } catch {
+        Write-Host "Error: Failed to rename or delete the databases." -ForegroundColor Red
+        Write-Host "Reason: $($_.Exception.Message)" -ForegroundColor Yellow
+    }
+}
