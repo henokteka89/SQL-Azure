@@ -1,0 +1,23 @@
+Put the directory where the module is stored (poweshell script = henokdbmodule.psm1. It should be save so)
+SAVE the MODULE as psm1 (module) file, don’t save it as PS or script file. 
+ 
+For importing the module
+#Define the path to the module 
+$modulepath = “C:\Users\ka**a\OneDrive\Documents\WindowsPowerShell\Modules\henokdbmodule\henokdbmodule.psm1”
+#Import the Module
+Import-Module -Name $modulepath
+#Verify the module is imported
+Get-Module -Name (Get-Item $modulepath).BaseName 
+ 
+ 
+Once the module is imported, you can run create, delete or restore database options as needed.
+azdelete-db  	# To delete existing database
+azrestore-db 	# To do a point in time recovery
+azcreate-db  	# To create new database
+ 
+
+If you update the module, it is better to remove it first and reload (import) it again. 
+ 
+Remove-Module henokdbmodule    # Remove the module if it's already imported
+Import-Module henokdbmodule    # Re-import the module 
+
