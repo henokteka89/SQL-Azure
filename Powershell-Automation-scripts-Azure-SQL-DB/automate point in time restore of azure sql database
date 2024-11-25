@@ -174,3 +174,26 @@ if ($restoreSuccess) {
         Write-Host "Reason: $($_.Exception.Message)" -ForegroundColor Yellow
     }
 }
+
+# adding an option to change retention period
+# Prompt the user about changing the backup retention period
+$retentionChange = Read-Host "The default backup retention period is 7 days. Do you want to change it to 14 days? (yes/no)"
+
+if ($retentionChange -eq "yes") {
+    try {
+        Write-Host "Changing the backup retention period to 14 days for the restored database '$sourceDbName'..."
+        Set-AzSqlDatabaseBackupLongTermRetentionPolicy `
+            -ResourceGroupName $resourceGroupName `
+            -ServerName $serverName `
+            -DatabaseName $sourceDbName `
+            -RetentionPolicyInDays 14 `
+            -ErrorAction Stop
+        Write-Host "Backup retention period successfully changed to 14 days for '$sourceDbName'."
+    } catch {
+        Write-Host "Error: Failed to set the backup retention period." -ForegroundColor Red
+        Write-Host "Reason: $($_.Exception.Message)" -ForegroundColor Yellow
+    }
+} else {
+    Write-Host "Retention period not changed. The default of 7 days will remain."
+}
+
