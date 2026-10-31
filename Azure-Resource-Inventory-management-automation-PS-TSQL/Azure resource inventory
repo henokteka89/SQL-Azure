@@ -1,0 +1,57 @@
+-- Use the below TSQL to create a table where Resource information will be stored
+CREATE TABLE AzureInventory (
+    ResourceId INT IDENTITY(1,1) PRIMARY KEY,
+    ResourceName NVARCHAR(255),
+    ResourceType NVARCHAR(255),
+    Location NVARCHAR(255),
+    ResourceGroup NVARCHAR(255),
+    ManagedBy NVARCHAR(255),
+    SKU NVARCHAR(255),
+    CreatedTime DATETIME,
+    ChangedTime DATETIME
+);
+
+-- Use the PS script to download resource information and populate the table
+-- CHhange server name and Disk 
+
+# Export Azure resources to a CSV file on the D drive
+Get-AzResource | Export-Csv -Path "W:\inventory.csv" -NoTypeInformation
+
+# Import the CSV file from the D drive
+$data = Import-Csv "W:\inventory.csv"  # Corrected path
+
+$servername = 'Hen' #Put the right Server name where the table is located
+$database = 'Admin' #Put the right Database name where the table is located
+
+# Set Dbatools config to trust certificates
+Set-DbatoolsConfig -FullName sql.connection.trustcert -Value $true
+
+# Define connection details
+$connectionString = "Server=$servername;Database=$database;Integrated Security=True;"
+
+# Iterate over each row and insert data into the SQL Server table
+foreach ($row in $data) {
+    $query = @"
+    INSERT INTO AzureInventory (
+        ResourceName, 
+        ResourceType, 
+        Location, 
+        ResourceGroup, 
+        ManagedBy, 
+        SKU, 
+        CreatedTime, 
+        ChangedTime
+    ) 
+    VALUES (
+        '$($row.ResourceName)', 
+        '$($row.ResourceType)', 
+        '$($row.Location)', 
+        '$($row.ResourceGroup)', 
+        '$($row.ManagedBy)', 
+        '$($row.SKU)', 
+        '$($row.CreatedTime)', 
+        '$($row.ChangedTime)'
+    )
+"@
+    Invoke-Sqlcmd -ConnectionString $connectionString -Query $query
+}
