@@ -1,0 +1,38 @@
+# $moduleName = "Az"
+# if(!(Get-Module -Name $moduleName -ListAvailable)) {
+# Install-Module -Name $moduleName -Scope CurrentUser
+# }
+
+Connect-AzAccount
+$sublist = Get-AzSubscription | Select-Object -Property Name
+$i = 1
+foreach ($sub in $sublist) {
+    Write-Host "$i. $($sub.Name)"
+    $i++
+}
+
+$selection = Read-Host "Enter the number of the subscription you want to use"
+$subscriptionName = $sublist[$selection - 1].Name
+Select-AzSubscription -SubscriptionName $subscriptionName -ErrorAction SilentlyContinue
+
+$sqlServers = Get-AzSqlServer | Select-Object -Property ResourceGroupName, ServerName
+$i = 1
+foreach ($sqlServer in $sqlServers) {
+    Write-Host "$i. $($sqlServer.ServerName)"
+    $i++
+}
+
+$selection = Read-Host "Enter the number of the SQL server you want to use"
+$serverName = $sqlServers[$selection - 1].ServerName
+$resourcegroupname = $sqlServers[$selection - 1].ResourceGroupName
+
+$dbName = Read-Host "What name do you want the db to have?"
+$ComputeLevel = Read-Host "What compute level do you want? Basic; S0,S1,P1,P2? DTU Levels Basic (5), S0(10), S1(20), P1(125), P2(250)"
+# $tags = @{ "Owner"="johndoe@hypot.com"; "environment"="Development"; "BusinessContact"="smith@hypot.com, me.last@hypot.com"}
+
+$database = New-AzSqlDatabase -ResourceGroupName $resourceGroupName `
+                              -ServerName $serverName `
+                              -DatabaseName $dbName `
+                              -RequestedServiceObjectiveName $ComputeLevel
+
+Write-Output "SQL Database '$dbName' created on server '$serverName'."

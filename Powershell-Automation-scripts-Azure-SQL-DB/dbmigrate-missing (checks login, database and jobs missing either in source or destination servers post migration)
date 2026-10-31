@@ -1,0 +1,49 @@
+function dbmigrate-missing {
+    param (
+        [string[]]$SourceServers,  # Accepts one or more source servers
+        [string[]]$DestinationServers  # Accepts one or more destination servers
+    )
+
+    # If no source servers are provided, prompt the user
+    if (-not $SourceServers) {
+        $SourceServers = Read-Host "Enter the source server(s), separated by commas"
+        $SourceServers = $SourceServers -split ","
+    }
+
+    # If no destination servers are provided, prompt the user
+    if (-not $DestinationServers) {
+        $DestinationServers = Read-Host "Enter the destination server(s), separated by commas"
+        $DestinationServers = $DestinationServers -split ","
+    }
+
+    # Loop through each combination of source and destination servers
+    foreach ($SourceServer in $SourceServers) {
+        foreach ($DestinationServer in $DestinationServers) {
+            Write-Host "Comparing $SourceServer with $DestinationServer"
+
+            # Get data from both source and destination servers
+            $SourceData = Get-SQLData -ServerName $SourceServer
+            $DestinationData = Get-SQLData -ServerName $DestinationServer
+
+            # Compare databases
+            $MissingDatabases = Compare-Object -ReferenceObject $SourceData.Databases -DifferenceObject $DestinationData.Databases -PassThru
+            if ($MissingDatabases) {
+                $MissingDatabases | Out-GridView -Title "Databases missing in $SourceServer or $DestinationServer"
+            }
+
+            # Compare logins
+            $MissingLogins = Compare-Object -ReferenceObject $SourceData.Logins -DifferenceObject $DestinationData.Logins -PassThru
+            if ($MissingLogins) {
+                $MissingLogins | Out-GridView -Title "Logins missing in $SourceServer or $DestinationServer"
+            }
+
+            # Compare jobs
+            $MissingJobs = Compare-Object -ReferenceObject $SourceData.Jobs -DifferenceObject $DestinationData.Jobs -PassThru
+            if ($MissingJobs) {
+                $MissingJobs | Out-GridView -Title "Jobs missing in $SourceServer or $DestinationServer"
+            }
+
+            Write-Host "--- Comparison Completed for $SourceServer and $DestinationServer ---"
+        }
+    }
+}

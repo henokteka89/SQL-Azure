@@ -1,0 +1,233 @@
+# azcreate-db: Function to create a new SQL database
+function azcreate-db {
+    # Directly connect to Azure (assuming Az module is already installed)
+    Write-Host "Connecting to your Azure account..."
+    Connect-AzAccount
+
+    # List available subscriptions
+    Write-Host "Fetching available subscriptions..."
+    $sublist = Get-AzSubscription | Select-Object -Property Name
+    $i = 1
+    foreach ($sub in $sublist) {
+        Write-Host "$i. $($sub.Name)"
+        $i++
+    }
+
+    # Choose subscription
+    $selection = Read-Host "Enter the number of the subscription you want to use"
+    $subscriptionName = $sublist[$selection - 1].Name
+    Write-Host "Selected Subscription: $subscriptionName"
+    Select-AzSubscription -SubscriptionName $subscriptionName -ErrorAction SilentlyContinue
+
+    # List available SQL Servers
+    Write-Host "Fetching available SQL servers..."
+    $sqlServers = Get-AzSqlServer | Select-Object -Property ResourceGroupName, ServerName
+    $i = 1
+    foreach ($sqlServer in $sqlServers) {
+        Write-Host "$i. $($sqlServer.ServerName)"
+        $i++
+    }
+
+    # Choose SQL Server
+    $selection = Read-Host "Enter the number of the SQL server you want to use"
+    $serverName = $sqlServers[$selection - 1].ServerName
+    $resourceGroupName = $sqlServers[$selection - 1].ResourceGroupName
+    Write-Host "Selected SQL Server: $serverName in Resource Group: $resourceGroupName"
+
+    # Get database name from user
+    $dbName = Read-Host "Enter the name you want for the new database"
+
+    # Get Compute level
+    $ComputeLevel = Read-Host "What compute level do you want? Options: Basic, S0, S1, P1, P2"
+
+    # Create the SQL database
+    Write-Host "Creating the SQL database '$dbName' with compute level '$ComputeLevel'..."
+    $database = New-AzSqlDatabase -ResourceGroupName $resourceGroupName `
+                                  -ServerName $serverName `
+                                  -DatabaseName $dbName `
+                                  -RequestedServiceObjectiveName $ComputeLevel
+
+    Write-Host "SQL Database '$dbName' created successfully on server '$serverName'."
+}
+
+# azdelete-db: Function to delete an existing SQL database
+function azdelete-db {
+    # Directly connect to Azure (assuming Az module is already installed)
+    Write-Host "Connecting to your Azure account..."
+    Connect-AzAccount
+
+    # List available subscriptions
+    Write-Host "Fetching available subscriptions..."
+    $sublist = Get-AzSubscription | Select-Object -Property Name
+    $i = 1
+    foreach ($sub in $sublist) {
+        Write-Host "$i. $($sub.Name)"
+        $i++
+    }
+
+    # Choose subscription
+    $selection = Read-Host "Enter the number of the subscription you want to use"
+    $subscriptionName = $sublist[$selection - 1].Name
+    Write-Host "Selected Subscription: $subscriptionName"
+    Select-AzSubscription -SubscriptionName $subscriptionName -ErrorAction SilentlyContinue
+
+    # List available SQL Servers
+    Write-Host "Fetching available SQL servers..."
+    $sqlServers = Get-AzSqlServer | Select-Object -Property ResourceGroupName, ServerName
+    $i = 1
+    foreach ($sqlServer in $sqlServers) {
+        Write-Host "$i. $($sqlServer.ServerName)"
+        $i++
+    }
+
+    # Choose SQL Server
+    $selection = Read-Host "Enter the number of the SQL server you want to use"
+    $serverName = $sqlServers[$selection - 1].ServerName
+    $resourceGroupName = $sqlServers[$selection - 1].ResourceGroupName
+    Write-Host "Selected SQL Server: $serverName in Resource Group: $resourceGroupName"
+
+    # List available databases
+    Write-Host "Fetching available databases on server '$serverName'..."
+    $databases = Get-AzSqlDatabase -ServerName $serverName -ResourceGroupName $resourceGroupName
+    $i = 1
+    foreach ($db in $databases) {
+        Write-Host "$i. $($db.DatabaseName)"
+        $i++
+    }
+
+    # Choose database to delete
+    $dbSelection = Read-Host "Enter the number of the database you want to delete"
+    $dbName = $databases[$dbSelection - 1].DatabaseName
+    Write-Host "Selected Database: $dbName"
+
+    # Confirm deletion
+    $confirm = Read-Host "Are you sure you want to delete the database '$dbName'? (yes/no)"
+    if ($confirm -eq "yes") {
+        # Delete the database
+        Write-Host "Deleting database '$dbName'..."
+        Remove-AzSqlDatabase -ResourceGroupName $resourceGroupName -ServerName $serverName -DatabaseName $dbName
+        Write-Host "Database '$dbName' has been successfully deleted."
+    } else {
+        Write-Host "Database deletion canceled."
+    }
+}
+
+# azrestore-db: Function to restore a SQL database, optionally rename and upgrade/downgrade service tiers
+function azrestore-db {
+    # Connect to Azure account
+    Write-Host "Connecting to your Azure account..."
+    Connect-AzAccount
+
+    # List all subscriptions
+    Write-Host "Fetching available subscriptions..."
+    $sublist = Get-AzSubscription | Select-Object -Property Name
+    $i = 1
+    foreach ($sub in $sublist) {
+        Write-Host "$i. $($sub.Name)"
+        $i++
+    }
+
+    # Subscription selection
+    $selection = Read-Host "Enter the number of the subscription you want to use"
+    $subscriptionName = $sublist[$selection - 1].Name
+    Select-AzSubscription -SubscriptionName $subscriptionName -ErrorAction SilentlyContinue
+
+    # List all SQL Servers in the selected subscription
+    Write-Host "Fetching available SQL servers..."
+    $sqlServers = Get-AzSqlServer | Select-Object -Property ResourceGroupName, ServerName
+    $i = 1
+    foreach ($sqlServer in $sqlServers) {
+        Write-Host "$i. $($sqlServer.ServerName) (Resource Group: $($sqlServer.ResourceGroupName))"
+        $i++
+    }
+
+    # SQL Server selection
+    $serverSelection = Read-Host "Enter the number of the SQL server you want to use"
+    $serverName = $sqlServers[$serverSelection - 1].ServerName
+    $resourceGroupName = $sqlServers[$serverSelection - 1].ResourceGroupName
+
+    # List available databases on the selected server
+    Write-Host "Fetching available databases..."
+    $sqlDatabases = Get-AzSqlDatabase -ServerName $serverName -ResourceGroupName $resourceGroupName
+    $i = 1
+    foreach ($db in $sqlDatabases) {
+        Write-Host "$i. $($db.DatabaseName)"
+        $i++
+    }
+
+    # Choose database to restore from
+    $dbSelection = Read-Host "Enter the number of the database to restore from"
+    $sourceDbName = $sqlDatabases[$dbSelection - 1].DatabaseName
+    $currentServiceObjective = $sqlDatabases[$dbSelection - 1].RequestedServiceObjectiveName
+    Write-Host "Selected database: $sourceDbName (Current tier: $currentServiceObjective)"
+
+    # Check if the service tier is low (Basic or S0)
+    $upgradedTier = $null
+    if ($currentServiceObjective -in @('Basic', 'S0')) {
+        $upgrade = Read-Host "The database is on a low tier ('$currentServiceObjective'). Do you want to temporarily upgrade it for the restore process? (yes/no)"
+        if ($upgrade -eq "yes") {
+            $upgradedTier = Read-Host "Enter the new service tier (e.g., S1, P1, etc.)"
+            Write-Host "Upgrading the database to '$upgradedTier' for the restore process..."
+            Set-AzSqlDatabase -ResourceGroupName $resourceGroupName -ServerName $serverName -DatabaseName $sourceDbName -RequestedServiceObjectiveName $upgradedTier -ErrorAction Stop
+            Write-Host "Database upgraded to '$upgradedTier'."
+        }
+    }
+
+    # Get restore time
+    $restoreTime = Read-Host "Enter the point-in-time for the restore (e.g., 2024-09-18T15:00:00Z)"
+
+    # Ask for the new database name
+    $newDbName = Read-Host "Enter the name for the restored database (e.g., adventureworks_copy)"
+
+    # Perform the restore
+    Write-Host "Restoring database '$sourceDbName' to '$newDbName' at time '$restoreTime'"
+    $restoredDb = Restore-AzSqlDatabase `
+        -FromPointInTimeBackup `
+        -PointInTime $restoreTime `
+        -ResourceGroupName $resourceGroupName `
+        -ServerName $serverName `
+        -TargetDatabaseName $newDbName `
+        -ResourceId (Get-AzSqlDatabase -ServerName $serverName -DatabaseName $sourceDbName -ResourceGroupName $resourceGroupName).ResourceId
+
+    Write-Host "Database '$newDbName' restored successfully."
+
+    # Option to rename the original database
+    $renameOriginal = Read-Host "Do you want to rename the original database? (yes/no)"
+    if ($renameOriginal -eq "yes") {
+        $oldDbName = "$sourceDbName-Old"
+        Write-Host "Renaming original database '$sourceDbName' to '$oldDbName'..."
+        Set-AzSqlDatabase -ResourceGroupName $resourceGroupName -ServerName $serverName -DatabaseName $sourceDbName -NewName $oldDbName
+        Write-Host "Original database renamed to '$oldDbName'."
+    }
+
+    # Option to rename the restored database
+    $renameNew = Read-Host "Do you want to rename the restored database to the original name '$sourceDbName'? (yes/no)"
+    if ($renameNew -eq "yes") {
+        Write-Host "Renaming restored database '$newDbName' to '$sourceDbName'..."
+        Set-AzSqlDatabase -ResourceGroupName $resourceGroupName -ServerName $serverName -DatabaseName $newDbName -NewName $sourceDbName
+        Write-Host "Restored database renamed to '$sourceDbName'."
+    }
+
+    # Option to delete the original database
+    $deleteOriginal = Read-Host "Do you want to delete the original database? (yes/no)"
+    if ($deleteOriginal -eq "yes") {
+        Write-Host "Deleting original database '$oldDbName'..."
+        Remove-AzSqlDatabase -ResourceGroupName $resourceGroupName -ServerName $serverName -DatabaseName $oldDbName
+        Write-Host "Original database '$oldDbName' deleted."
+    } else {
+        Write-Host "Original database not deleted."
+    }
+
+    # Option to downgrade the service tier back to original
+    if ($upgradedTier -ne $null) {
+        $downgrade = Read-Host "Do you want to downgrade the database back to its original tier '$currentServiceObjective'? (yes/no)"
+        if ($downgrade -eq "yes") {
+            Write-Host "Downgrading the database back to '$currentServiceObjective'..."
+            Set-AzSqlDatabase -ResourceGroupName $resourceGroupName -ServerName $serverName -DatabaseName $sourceDbName -RequestedServiceObjectiveName $currentServiceObjective -ErrorAction Stop
+            Write-Host "Database downgraded to '$currentServiceObjective'."
+        }
+    }
+}
+
+# Export the functions
+Export-ModuleMember -Function azcreate-db, azdelete-db, azrestore-db
