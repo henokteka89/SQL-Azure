@@ -1,0 +1,11 @@
+Although it's not possible to create your own regional pairings, you can nevertheless create your own disaster recovery solution by building your services in any number of regions and then using Azure services to pair them. 
+For example, you can use Azure services such as AzCopy to schedule data backups to an Azure Storage account in a different region. 
+Using Azure DNS and Azure Traffic Manager, you can design a resilient architecture for your applications that will survive the loss of the primary region.
+
+Azure controls planned maintenance and recovery prioritization for regional pairs. Some Azure services rely upon regional pairs by default, such as Azure redundant storage.
+
+You aren't limited to using services within your regional pairs. 
+Although an Azure service can rely upon a specific regional pair, you can host your other services in any region that satisfies your business needs. 
+For example, an Azure GRS storage solution can pair data in Canada Central with a peer in Canada East while using Azure Compute resources located in East US.
+
+https://learn.microsoft.com/en-us/azure/reliability/cross-region-replication-azure#azure-paired-regions
