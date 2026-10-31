@@ -1,0 +1,8 @@
+Perf
+| where Computer contains “WQ” 
+| where ObjectName == "LogicalDisk" 
+| where CounterName == "% Free Space" 
+| where InstanceName == “C:” or InstanceName == “F:” 
+| where CounterValue <= 15
+| where TimeGenerated >= ago(15m)
+| summarize max(CounterValue) by Computer, bin(TimeGenerated, 15m)
