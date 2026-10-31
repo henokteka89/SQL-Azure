@@ -1,0 +1,17 @@
+# put the subscriptionid under ResourceID
+ 
+# Connect to your Azure account
+Connect-AzAccount
+
+# Set the necessary variables
+$resourceGroupName = "RGNamehere"
+$serverName = "servernamehere"
+$databaseName = "adventureworks"
+$RestoreTime = "2024-07-23 06:00:00"
+$restoredDatabaseName = "adventureworksnew"
+ 
+# Restore the database
+Restore-AzSqlDatabase -FromPointInTimeBackup -ResourceGroupName $resourceGroupName 
+-ServerName $serverName -TargetDatabaseName $restoredDatabaseName 
+-PointInTime $RestoreTime 
+-ResourceId "/subscriptions/subscriptionidhere/resourceGroups/$resourceGroupName/providers/Microsoft.Sql/servers/$serverName/databases/$databaseName"
